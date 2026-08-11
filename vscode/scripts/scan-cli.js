@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CLI helper: node src/vscode/scripts/scan-cli.js <dir>
+ * CLI helper: node vscode/scripts/scan-cli.js <dir>
  */
 const path = require("path");
 const { scanDirectory, formatReportMarkdown } = require("../out/scanner");

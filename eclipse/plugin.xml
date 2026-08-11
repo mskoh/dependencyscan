@@ -22,6 +22,7 @@
       <command
         commandId="dependencyscan.eclipse.scan"
         label="Dependency Scan"
+        icon="icons/scan.png"
         style="push">
         <visibleWhen checkEnabled="false">
           <with variable="selection">
@@ -37,6 +38,7 @@
       <command
         commandId="dependencyscan.eclipse.scan"
         label="Dependency Scan"
+        icon="icons/scan.png"
         style="push">
         <visibleWhen checkEnabled="false">
           <with variable="selection">

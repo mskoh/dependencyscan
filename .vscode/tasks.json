@@ -5,7 +5,7 @@
       "label": "vscode: compile",
       "type": "npm",
       "script": "compile",
-      "path": "src/vscode/",
+      "path": "vscode/",
       "group": {
         "kind": "build",
         "isDefault": true

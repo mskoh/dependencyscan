@@ -14,11 +14,10 @@ Java 프로젝트 소스를 스캔해 **dependency 라이브러리 메소드 사
 
 ```
 dependencyscan/
-├── src/
-│   ├── core/          # 공통 추천 규칙·카탈로그 (JSON)
-│   ├── eclipse/       # Eclipse 플러그인
-│   └── vscode/        # VS Code 확장
-├── samples/           # 스캔 데모용 Java 샘플
+├── core/          # 공통 추천 규칙·카탈로그 (JSON)
+├── eclipse/       # Eclipse 플러그인
+├── vscode/        # VS Code 확장
+├── samples/       # 스캔 데모용 Java 샘플
 └── README.md
 ```
 
@@ -26,12 +25,12 @@ dependencyscan/
 
 ### VS Code
 
-1. `src/vscode`에서 의존성 설치 후 확장 실행 (F5)
+1. `vscode`에서 의존성 설치 후 확장 실행 (F5)
 2. Explorer에서 폴더(예: `src/main/java`) **우클릭 → Dependency Scan**
 3. 결과 패널에서 소스별 라이브러리/메소드·추천·중복 리포트 확인
 
 ```bash
-cd src/vscode
+cd vscode
 npm install
 npm run compile
 # VS Code에서 F5로 Extension Development Host 실행
@@ -39,7 +38,7 @@ npm run compile
 
 ### Eclipse
 
-1. Eclipse PDE에서 `src/eclipse`를 플러그인 프로젝트로 import
+1. Eclipse PDE에서 `eclipse`를 플러그인 프로젝트로 import
 2. Package Explorer에서 폴더 **우클릭 → Dependency Scan**
 3. Dependency Scan 뷰에서 리포트 확인
 

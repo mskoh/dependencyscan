@@ -1,7 +1,7 @@
 node_modules/
-src/vscode/node_modules/
-src/vscode/out/
-src/eclipse/bin/
+vscode/node_modules/
+vscode/out/
+eclipse/bin/
 *.vsix
 .DS_Store
 *.class
