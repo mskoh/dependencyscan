@@ -1,0 +1,150 @@
+{
+  "version": "1.0.0",
+  "description": "Java dependency method usage recommendations by Java language level",
+  "libraryAliases": {
+    "com.google.common": "Guava",
+    "org.apache.commons.lang3": "Apache Commons Lang",
+    "org.apache.commons.lang": "Apache Commons Lang",
+    "org.apache.commons.io": "Apache Commons IO",
+    "org.apache.commons.collections4": "Apache Commons Collections",
+    "org.apache.commons.collections": "Apache Commons Collections",
+    "org.springframework": "Spring Framework",
+    "org.slf4j": "SLF4J",
+    "lombok": "Lombok",
+    "com.fasterxml.jackson": "Jackson",
+    "org.json": "org.json",
+    "com.google.gson": "Gson",
+    "okhttp3": "OkHttp",
+    "retrofit2": "Retrofit",
+    "io.reactivex": "RxJava",
+    "reactor.core": "Project Reactor",
+    "org.hibernate": "Hibernate",
+    "javax.persistence": "JPA",
+    "jakarta.persistence": "Jakarta Persistence"
+  },
+  "duplicateGroups": [
+    {
+      "id": "string-utils",
+      "purpose": "문자열 null/empty 검사 및 유틸",
+      "members": [
+        "org.apache.commons.lang3.StringUtils",
+        "org.apache.commons.lang.StringUtils",
+        "com.google.common.base.Strings",
+        "org.springframework.util.StringUtils"
+      ]
+    },
+    {
+      "id": "collection-utils",
+      "purpose": "컬렉션 null/empty 및 변환 유틸",
+      "members": [
+        "org.apache.commons.collections4.CollectionUtils",
+        "org.apache.commons.collections.CollectionUtils",
+        "com.google.common.collect.Collections2",
+        "com.google.common.collect.Lists",
+        "org.springframework.util.CollectionUtils"
+      ]
+    },
+    {
+      "id": "io-utils",
+      "purpose": "파일/스트림 IO 유틸",
+      "members": [
+        "org.apache.commons.io.FileUtils",
+        "org.apache.commons.io.IOUtils",
+        "com.google.common.io.Files",
+        "com.google.common.io.Resources"
+      ]
+    },
+    {
+      "id": "json",
+      "purpose": "JSON 직렬화/파싱",
+      "members": [
+        "com.fasterxml.jackson.databind.ObjectMapper",
+        "com.google.gson.Gson",
+        "org.json.JSONObject"
+      ]
+    },
+    {
+      "id": "logging",
+      "purpose": "로깅 파사드",
+      "members": [
+        "org.slf4j.LoggerFactory",
+        "org.apache.commons.logging.LogFactory",
+        "java.util.logging.Logger"
+      ]
+    }
+  ],
+  "recommendations": [
+    {
+      "type": "com.google.common.base.Strings",
+      "methods": ["isNullOrEmpty", "nullToEmpty", "emptyToNull"],
+      "minJava": 8,
+      "prefer": "java.lang.String#isBlank / Objects / 직접 null 체크",
+      "note": "Java 11+ 에서는 String.isBlank() 사용을 권장합니다.",
+      "preferWhenJavaAtLeast": 11,
+      "preferForJava11Plus": "java.lang.String#isBlank()"
+    },
+    {
+      "type": "org.apache.commons.lang3.StringUtils",
+      "methods": ["isEmpty", "isBlank", "isNotBlank", "defaultString"],
+      "minJava": 11,
+      "prefer": "java.lang.String#isBlank() / isEmpty()",
+      "note": "단순 null/blank 검사는 표준 API로 대체 가능합니다."
+    },
+    {
+      "type": "org.apache.commons.io.FileUtils",
+      "methods": ["readFileToString", "writeStringToFile", "copyFile", "deleteDirectory"],
+      "minJava": 11,
+      "prefer": "java.nio.file.Files",
+      "note": "Java 11+ NIO Files API로 대부분 대체 가능합니다."
+    },
+    {
+      "type": "org.apache.commons.io.IOUtils",
+      "methods": ["toString", "toByteArray", "copy"],
+      "minJava": 9,
+      "prefer": "InputStream#readAllBytes() / new String(bytes, charset)",
+      "note": "Java 9+ InputStream.readAllBytes() 사용을 권장합니다."
+    },
+    {
+      "type": "com.google.common.collect.Lists",
+      "methods": ["newArrayList", "asList", "partition"],
+      "minJava": 9,
+      "prefer": "java.util.List#of / new ArrayList<>()",
+      "note": "단순 리스트 생성은 표준 컬렉션 API로 충분합니다."
+    },
+    {
+      "type": "com.google.common.collect.Maps",
+      "methods": ["newHashMap", "newLinkedHashMap"],
+      "minJava": 8,
+      "prefer": "new HashMap<>() / Map.of()",
+      "note": "Java 9+ Map.of() / Map.ofEntries() 사용을 고려하세요."
+    },
+    {
+      "type": "com.google.common.base.Optional",
+      "methods": ["of", "fromNullable", "absent"],
+      "minJava": 8,
+      "prefer": "java.util.Optional",
+      "note": "Guava Optional 대신 java.util.Optional을 사용하세요."
+    },
+    {
+      "type": "com.google.common.base.Preconditions",
+      "methods": ["checkNotNull", "checkArgument", "checkState"],
+      "minJava": 8,
+      "prefer": "java.util.Objects#requireNonNull",
+      "note": "단순 null 검사는 Objects.requireNonNull로 대체 가능합니다."
+    },
+    {
+      "type": "org.apache.commons.lang3.ObjectUtils",
+      "methods": ["defaultIfNull", "firstNonNull"],
+      "minJava": 9,
+      "prefer": "java.util.Objects#requireNonNullElse",
+      "note": "Java 9+ Objects.requireNonNullElse 사용을 권장합니다."
+    },
+    {
+      "type": "org.springframework.util.CollectionUtils",
+      "methods": ["isEmpty"],
+      "minJava": 8,
+      "prefer": "collection == null || collection.isEmpty()",
+      "note": "Spring에 강하게 의존하지 않는 모듈에서는 표준 검사식을 권장합니다."
+    }
+  ]
+}

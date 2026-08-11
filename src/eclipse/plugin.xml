@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+  <extension point="org.eclipse.ui.commands">
+    <command
+      id="dependencyscan.eclipse.scan"
+      name="Dependency Scan"
+      categoryId="dependencyscan.eclipse.category"/>
+    <category
+      id="dependencyscan.eclipse.category"
+      name="Dependency Scan"/>
+  </extension>
+
+  <extension point="org.eclipse.ui.handlers">
+    <handler
+      commandId="dependencyscan.eclipse.scan"
+      class="dependencyscan.eclipse.handlers.ScanHandler"/>
+  </extension>
+
+  <extension point="org.eclipse.ui.menus">
+    <menuContribution locationURI="popup:org.eclipse.jdt.ui.PackageExplorer?after=additions">
+      <command
+        commandId="dependencyscan.eclipse.scan"
+        label="Dependency Scan"
+        style="push">
+        <visibleWhen checkEnabled="false">
+          <with variable="selection">
+            <count value="1"/>
+            <iterate>
+              <adapt type="org.eclipse.core.resources.IContainer"/>
+            </iterate>
+          </with>
+        </visibleWhen>
+      </command>
+    </menuContribution>
+    <menuContribution locationURI="popup:org.eclipse.ui.navigator.ProjectExplorer#PopupMenu?after=additions">
+      <command
+        commandId="dependencyscan.eclipse.scan"
+        label="Dependency Scan"
+        style="push">
+        <visibleWhen checkEnabled="false">
+          <with variable="selection">
+            <count value="1"/>
+            <iterate>
+              <adapt type="org.eclipse.core.resources.IContainer"/>
+            </iterate>
+          </with>
+        </visibleWhen>
+      </command>
+    </menuContribution>
+  </extension>
+
+  <extension point="org.eclipse.ui.views">
+    <category
+      id="dependencyscan.eclipse.category"
+      name="Dependency Scan"/>
+    <view
+      id="dependencyscan.eclipse.reportView"
+      name="Dependency Scan Report"
+      category="dependencyscan.eclipse.category"
+      class="dependencyscan.eclipse.views.ReportView"
+      icon="icons/scan.png"/>
+  </extension>
+</plugin>

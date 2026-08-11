@@ -1,0 +1,16 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: Dependency Scan
+Bundle-SymbolicName: dependencyscan.eclipse;singleton:=true
+Bundle-Version: 0.1.0.qualifier
+Bundle-Activator: dependencyscan.eclipse.Activator
+Bundle-Vendor: dependencyscan
+Require-Bundle: org.eclipse.ui,
+ org.eclipse.core.runtime,
+ org.eclipse.core.resources,
+ org.eclipse.jdt.core,
+ org.eclipse.ui.ide,
+ org.eclipse.jface
+Bundle-RequiredExecutionEnvironment: JavaSE-17
+Bundle-ActivationPolicy: lazy
+Automatic-Module-Name: dependencyscan.eclipse

@@ -1,0 +1,46 @@
+{
+  "name": "dependencyscan",
+  "displayName": "Dependency Scan",
+  "description": "Scan Java sources for dependency library method usage, duplicates, and Java-version-aware recommendations.",
+  "version": "0.1.0",
+  "publisher": "dependencyscan",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onCommand:dependencyscan.scan"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "dependencyscan.scan",
+        "title": "Dependency Scan"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "dependencyscan.scan",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@99"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}
