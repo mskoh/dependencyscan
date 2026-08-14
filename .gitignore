@@ -7,3 +7,5 @@ eclipse/bin/
 *.class
 target/
 build/
+**/reports/
+deploy/

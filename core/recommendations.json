@@ -26,11 +26,59 @@
     {
       "id": "string-utils",
       "purpose": "문자열 null/empty 검사 및 유틸",
+      "preferredType": "org.apache.commons.lang3.StringUtils",
+      "preferredLibrary": "Apache Commons Lang",
+      "recommendation": "문자열 유틸은 범용성이 높은 Apache Commons Lang3 StringUtils로 통일하는 것을 권장합니다.",
       "members": [
         "org.apache.commons.lang3.StringUtils",
         "org.apache.commons.lang.StringUtils",
         "com.google.common.base.Strings",
         "org.springframework.util.StringUtils"
+      ],
+      "methodReplacements": {
+        "org.apache.commons.lang.StringUtils#isEmpty": "org.apache.commons.lang3.StringUtils#isEmpty",
+        "org.apache.commons.lang.StringUtils#isBlank": "org.apache.commons.lang3.StringUtils#isBlank",
+        "org.apache.commons.lang.StringUtils#isNotBlank": "org.apache.commons.lang3.StringUtils#isNotBlank",
+        "com.google.common.base.Strings#isNullOrEmpty": "org.apache.commons.lang3.StringUtils#isEmpty",
+        "com.google.common.base.Strings#nullToEmpty": "org.apache.commons.lang3.StringUtils#defaultString",
+        "org.springframework.util.StringUtils#hasText": "org.apache.commons.lang3.StringUtils#isNotBlank",
+        "org.springframework.util.StringUtils#hasLength": "org.apache.commons.lang3.StringUtils#isNotEmpty",
+        "org.springframework.util.StringUtils#isEmpty": "org.apache.commons.lang3.StringUtils#isEmpty"
+      },
+      "methodReplacementRules": [
+        {
+          "current": "org.springframework.util.StringUtils#trimWhitespace",
+          "minJava": 11,
+          "recommended": "java.lang.String#strip"
+        },
+        {
+          "current": "org.springframework.util.StringUtils#trimWhitespace",
+          "minJava": 8,
+          "maxJava": 10,
+          "recommended": "org.apache.commons.lang3.StringUtils#strip"
+        },
+        {
+          "current": "org.springframework.util.StringUtils#trimLeadingWhitespace",
+          "minJava": 11,
+          "recommended": "java.lang.String#stripLeading"
+        },
+        {
+          "current": "org.springframework.util.StringUtils#trimLeadingWhitespace",
+          "minJava": 8,
+          "maxJava": 10,
+          "recommended": "org.apache.commons.lang3.StringUtils#stripStart"
+        },
+        {
+          "current": "org.springframework.util.StringUtils#trimTrailingWhitespace",
+          "minJava": 11,
+          "recommended": "java.lang.String#stripTrailing"
+        },
+        {
+          "current": "org.springframework.util.StringUtils#trimTrailingWhitespace",
+          "minJava": 8,
+          "maxJava": 10,
+          "recommended": "org.apache.commons.lang3.StringUtils#stripEnd"
+        }
       ]
     },
     {
@@ -45,13 +93,122 @@
       ]
     },
     {
-      "id": "io-utils",
-      "purpose": "파일/스트림 IO 유틸",
+      "id": "io-read-text",
+      "purpose": "파일/스트림 내용을 문자열로 읽기",
+      "recommendation": "문자열 읽기 목적의 IO 유틸이 섞여 있습니다. 파일 경로가 있으면 Java 11+ Files.readString(Path, Charset), 스트림이면 readAllBytes 후 charset 변환으로 정리할 수 있습니다.",
       "members": [
         "org.apache.commons.io.FileUtils",
         "org.apache.commons.io.IOUtils",
         "com.google.common.io.Files",
         "com.google.common.io.Resources"
+      ],
+      "methodMembers": [
+        "org.apache.commons.io.FileUtils#readFileToString",
+        "org.apache.commons.io.IOUtils#toString",
+        "com.google.common.io.Files#toString",
+        "com.google.common.io.Resources#toString"
+      ],
+      "methodReplacementRules": [
+        {
+          "current": "org.apache.commons.io.FileUtils#readFileToString",
+          "minJava": 11,
+          "recommended": "java.nio.file.Files#readString"
+        },
+        {
+          "current": "com.google.common.io.Files#toString",
+          "minJava": 11,
+          "recommended": "java.nio.file.Files#readString"
+        },
+        {
+          "current": "org.apache.commons.io.IOUtils#toString",
+          "minJava": 9,
+          "recommended": "java.io.InputStream#readAllBytes"
+        }
+      ]
+    },
+    {
+      "id": "io-read-bytes",
+      "purpose": "파일/스트림 내용을 바이트 배열로 읽기",
+      "recommendation": "바이트 배열 읽기 목적의 IO 유틸이 섞여 있습니다. 파일은 Files.readAllBytes(Path), 스트림은 InputStream.readAllBytes()로 정리할 수 있습니다.",
+      "members": [
+        "org.apache.commons.io.FileUtils",
+        "org.apache.commons.io.IOUtils",
+        "com.google.common.io.Files",
+        "com.google.common.io.ByteStreams"
+      ],
+      "methodMembers": [
+        "org.apache.commons.io.FileUtils#readFileToByteArray",
+        "org.apache.commons.io.IOUtils#toByteArray",
+        "com.google.common.io.Files#toByteArray",
+        "com.google.common.io.ByteStreams#toByteArray"
+      ],
+      "methodReplacementRules": [
+        {
+          "current": "org.apache.commons.io.FileUtils#readFileToByteArray",
+          "minJava": 8,
+          "recommended": "java.nio.file.Files#readAllBytes"
+        },
+        {
+          "current": "com.google.common.io.Files#toByteArray",
+          "minJava": 8,
+          "recommended": "java.nio.file.Files#readAllBytes"
+        },
+        {
+          "current": "org.apache.commons.io.IOUtils#toByteArray",
+          "minJava": 9,
+          "recommended": "java.io.InputStream#readAllBytes"
+        },
+        {
+          "current": "com.google.common.io.ByteStreams#toByteArray",
+          "minJava": 9,
+          "recommended": "java.io.InputStream#readAllBytes"
+        }
+      ]
+    },
+    {
+      "id": "io-copy-data",
+      "purpose": "파일/스트림 데이터 복사",
+      "recommendation": "복사 목적의 IO 유틸이 섞여 있습니다. 파일 간 복사는 Files.copy(Path, Path), 스트림 간 복사는 Java 9+ InputStream.transferTo(OutputStream)를 우선 검토하세요.",
+      "members": [
+        "org.apache.commons.io.FileUtils",
+        "org.apache.commons.io.IOUtils",
+        "com.google.common.io.Files",
+        "com.google.common.io.ByteStreams"
+      ],
+      "methodMembers": [
+        "org.apache.commons.io.FileUtils#copyFile",
+        "org.apache.commons.io.FileUtils#copyDirectory",
+        "org.apache.commons.io.IOUtils#copy",
+        "org.apache.commons.io.IOUtils#copyLarge",
+        "com.google.common.io.Files#copy",
+        "com.google.common.io.ByteStreams#copy"
+      ],
+      "methodReplacementRules": [
+        {
+          "current": "org.apache.commons.io.FileUtils#copyFile",
+          "minJava": 8,
+          "recommended": "java.nio.file.Files#copy"
+        },
+        {
+          "current": "com.google.common.io.Files#copy",
+          "minJava": 8,
+          "recommended": "java.nio.file.Files#copy"
+        },
+        {
+          "current": "org.apache.commons.io.IOUtils#copy",
+          "minJava": 9,
+          "recommended": "java.io.InputStream#transferTo"
+        },
+        {
+          "current": "org.apache.commons.io.IOUtils#copyLarge",
+          "minJava": 9,
+          "recommended": "java.io.InputStream#transferTo"
+        },
+        {
+          "current": "com.google.common.io.ByteStreams#copy",
+          "minJava": 9,
+          "recommended": "java.io.InputStream#transferTo"
+        }
       ]
     },
     {
@@ -99,10 +256,17 @@
     },
     {
       "type": "org.apache.commons.io.IOUtils",
-      "methods": ["toString", "toByteArray", "copy"],
+      "methods": ["toString", "toByteArray"],
       "minJava": 9,
       "prefer": "InputStream#readAllBytes() / new String(bytes, charset)",
       "note": "Java 9+ InputStream.readAllBytes() 사용을 권장합니다."
+    },
+    {
+      "type": "org.apache.commons.io.IOUtils",
+      "methods": ["copy", "copyLarge"],
+      "minJava": 9,
+      "prefer": "InputStream#transferTo(OutputStream)",
+      "note": "Java 9+ InputStream.transferTo(OutputStream) 사용을 검토하세요."
     },
     {
       "type": "com.google.common.collect.Lists",

@@ -25,8 +25,20 @@ export interface SourceFinding {
 export interface DuplicateFinding {
   groupId: string;
   purpose: string;
+  preferredType?: string;
+  preferredLibrary?: string;
+  recommendation?: string;
   types: string[];
+  methods: string[];
   sources: string[];
+  replacements: DuplicateReplacement[];
+}
+
+export interface DuplicateReplacement {
+  source: string;
+  line: number;
+  current: string;
+  recommended: string;
 }
 
 export interface LibrarySummary {
@@ -58,7 +70,20 @@ interface RecommendationRule {
 interface DuplicateGroup {
   id: string;
   purpose: string;
+  preferredType?: string;
+  preferredLibrary?: string;
+  recommendation?: string;
   members: string[];
+  methodMembers?: string[];
+  methodReplacements?: Record<string, string>;
+  methodReplacementRules?: MethodReplacementRule[];
+}
+
+interface MethodReplacementRule {
+  current: string;
+  minJava?: number;
+  maxJava?: number;
+  recommended: string;
 }
 
 interface RecommendationCatalog {
@@ -71,9 +96,44 @@ const IMPORT_RE = /^\s*import\s+(?:static\s+)?([a-zA-Z0-9_.]+)\s*;/;
 const STATIC_IMPORT_METHOD_RE =
   /^\s*import\s+static\s+([a-zA-Z0-9_.]+)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*;/;
 
-function loadCatalog(catalogPath: string): RecommendationCatalog {
+function loadCatalog(catalogPath: string, customCatalogPath?: string): RecommendationCatalog {
   const raw = fs.readFileSync(catalogPath, "utf8");
-  return JSON.parse(raw) as RecommendationCatalog;
+  const catalog = JSON.parse(raw) as RecommendationCatalog;
+  const customPath = customCatalogPath?.trim();
+  if (!customPath) {
+    return catalog;
+  }
+  if (!fs.existsSync(customPath)) {
+    throw new Error(`Custom catalog not found: ${customPath}`);
+  }
+  const custom = JSON.parse(fs.readFileSync(customPath, "utf8")) as RecommendationCatalog;
+  return mergeCatalog(catalog, custom);
+}
+
+function mergeCatalog(
+  base: RecommendationCatalog,
+  custom: RecommendationCatalog
+): RecommendationCatalog {
+  const duplicateGroups = [...(base.duplicateGroups ?? [])];
+  for (const customGroup of custom.duplicateGroups ?? []) {
+    const index = duplicateGroups.findIndex((group) => group.id === customGroup.id);
+    if (index >= 0) {
+      duplicateGroups[index] = customGroup;
+    } else {
+      duplicateGroups.push(customGroup);
+    }
+  }
+  return {
+    libraryAliases: {
+      ...(base.libraryAliases ?? {}),
+      ...(custom.libraryAliases ?? {}),
+    },
+    duplicateGroups,
+    recommendations: [
+      ...(base.recommendations ?? []),
+      ...(custom.recommendations ?? []),
+    ],
+  };
 }
 
 function walkJavaFiles(dir: string): string[] {
@@ -102,6 +162,8 @@ function detectJavaVersion(projectRoot: string): number | null {
     path.join(projectRoot, "build.gradle"),
     path.join(projectRoot, "build.gradle.kts"),
     path.join(projectRoot, ".java-version"),
+    path.join(projectRoot, ".settings", "org.eclipse.jdt.core.prefs"),
+    path.join(projectRoot, ".classpath"),
   ];
 
   for (const file of candidates) {
@@ -115,6 +177,9 @@ function detectJavaVersion(projectRoot: string): number | null {
       /sourceCompatibility\s*[=:]\s*['"]?(\d+)/,
       /targetCompatibility\s*[=:]\s*['"]?(\d+)/,
       /JavaLanguageVersion\.of\((\d+)\)/,
+      /org\.eclipse\.jdt\.core\.compiler\.compliance=(\d+)/,
+      /org\.eclipse\.jdt\.core\.compiler\.source=(\d+)/,
+      /JavaSE-(\d+)/,
       /^(\d+)\s*$/m,
     ];
     for (const re of patterns) {
@@ -142,7 +207,13 @@ function detectJavaVersion(projectRoot: string): number | null {
 }
 
 function detectJavaVersionShallow(projectRoot: string): number | null {
-  for (const name of ["pom.xml", "build.gradle", "build.gradle.kts"]) {
+  for (const name of [
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    path.join(".settings", "org.eclipse.jdt.core.prefs"),
+    ".classpath",
+  ]) {
     const file = path.join(projectRoot, name);
     if (!fs.existsSync(file)) {
       continue;
@@ -151,7 +222,9 @@ function detectJavaVersionShallow(projectRoot: string): number | null {
     const m =
       text.match(/<maven\.compiler\.(?:source|release)>\s*(\d+)\s*</) ||
       text.match(/<java\.version>\s*(\d+)\s*</) ||
-      text.match(/sourceCompatibility\s*[=:]\s*['"]?(\d+)/);
+      text.match(/sourceCompatibility\s*[=:]\s*['"]?(\d+)/) ||
+      text.match(/org\.eclipse\.jdt\.core\.compiler\.compliance=(\d+)/) ||
+      text.match(/JavaSE-(\d+)/);
     if (m) {
       return Number(m[1]);
     }
@@ -363,34 +436,108 @@ function buildLibrarySummary(sources: SourceFinding[]): LibrarySummary[] {
 
 function findDuplicates(
   sources: SourceFinding[],
-  catalog: RecommendationCatalog
+  catalog: RecommendationCatalog,
+  javaVersion: number | null
 ): DuplicateFinding[] {
   const findings: DuplicateFinding[] = [];
   for (const group of catalog.duplicateGroups) {
     const usedTypes = new Set<string>();
+    const usedMethods = new Set<string>();
     const usedSources = new Set<string>();
     for (const source of sources) {
       for (const usage of source.usages) {
-        if (group.members.includes(usage.typeName)) {
+        if (matchesDuplicateGroup(group, usage)) {
           usedTypes.add(usage.typeName);
+          usedMethods.add(`${usage.typeName}#${usage.method}`);
           usedSources.add(source.source);
         }
       }
     }
-    if (usedTypes.size >= 2) {
+    const duplicateCount = group.methodMembers?.length ? usedMethods.size : usedTypes.size;
+    if (duplicateCount >= 2) {
       findings.push({
         groupId: group.id,
         purpose: group.purpose,
+        preferredType: group.preferredType,
+        preferredLibrary: group.preferredLibrary,
+        recommendation: group.recommendation,
         types: [...usedTypes].sort(),
+        methods: [...usedMethods].sort(),
         sources: [...usedSources].sort(),
+        replacements: buildDuplicateReplacements(group, sources, javaVersion),
       });
     }
   }
   return findings;
 }
 
+function buildDuplicateReplacements(
+  group: DuplicateGroup,
+  sources: SourceFinding[],
+  javaVersion: number | null
+): DuplicateReplacement[] {
+  const replacements: DuplicateReplacement[] = [];
+  for (const source of sources) {
+    for (const usage of source.usages) {
+      if (!group.members.includes(usage.typeName)) {
+        continue;
+      }
+      if (!matchesDuplicateGroup(group, usage)) {
+        continue;
+      }
+      if (group.preferredType && usage.typeName === group.preferredType) {
+        continue;
+      }
+      const recommended = resolveDuplicateReplacement(group, usage, javaVersion);
+      if (!recommended) {
+        continue;
+      }
+      replacements.push({
+        source: source.source,
+        line: usage.line,
+        current: `${usage.typeName}#${usage.method}`,
+        recommended,
+      });
+    }
+  }
+  return replacements;
+}
+
+function resolveDuplicateReplacement(
+  group: DuplicateGroup,
+  usage: MethodUsage,
+  javaVersion: number | null
+): string | undefined {
+  const exactKey = `${usage.typeName}#${usage.method}`;
+  const version = javaVersion ?? 8;
+  for (const rule of group.methodReplacementRules ?? []) {
+    if (rule.current !== exactKey) {
+      continue;
+    }
+    if (version < (rule.minJava ?? 8)) {
+      continue;
+    }
+    if (rule.maxJava !== undefined && version > rule.maxJava) {
+      continue;
+    }
+    return rule.recommended;
+  }
+  const replacements = group.methodReplacements ?? {};
+  if (replacements[exactKey]) {
+    return replacements[exactKey];
+  }
+  return undefined;
+}
+
+function matchesDuplicateGroup(group: DuplicateGroup, usage: MethodUsage): boolean {
+  if (group.methodMembers?.length) {
+    return group.methodMembers.includes(`${usage.typeName}#${usage.method}`);
+  }
+  return group.members.includes(usage.typeName);
+}
+
 export function findProjectRoot(startDir: string): string {
-  let current = startDir;
+  let current = path.resolve(startDir);
   for (let i = 0; i < 8; i++) {
     if (
       fs.existsSync(path.join(current, "pom.xml")) ||
@@ -406,14 +553,51 @@ export function findProjectRoot(startDir: string): string {
     }
     current = parent;
   }
-  return startDir;
+  return path.resolve(startDir);
+}
+
+/**
+ * Build a report filename from the selected scan path relative to the project root.
+ * e.g. src/main/java -> src_main_java.md
+ */
+export function buildReportFileName(projectRoot: string, scannedRoot: string): string {
+  const project = path.resolve(projectRoot);
+  const scanned = path.resolve(scannedRoot);
+  let rel = path.relative(project, scanned);
+  if (!rel || rel === "." || rel.startsWith("..")) {
+    rel = path.basename(scanned);
+  }
+  const safe = rel
+    .replace(/\\/g, "/")
+    .replace(/\/+/g, "_")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return `${safe || "scan"}.md`;
+}
+
+export function writeReportFile(
+  projectRoot: string,
+  scannedRoot: string,
+  markdown: string,
+  reportDirectory = "reports"
+): string {
+  const configured = reportDirectory.trim() || "reports";
+  const reportsDir = path.isAbsolute(configured)
+    ? path.normalize(configured)
+    : path.join(path.resolve(projectRoot), configured);
+  fs.mkdirSync(reportsDir, { recursive: true });
+  const fileName = buildReportFileName(projectRoot, scannedRoot);
+  const reportPath = path.join(reportsDir, fileName);
+  fs.writeFileSync(reportPath, markdown, "utf8");
+  return reportPath;
 }
 
 export function scanDirectory(
   scannedRoot: string,
-  catalogPath: string
+  catalogPath: string,
+  customCatalogPath?: string
 ): ScanReport {
-  const catalog = loadCatalog(catalogPath);
+  const catalog = loadCatalog(catalogPath, customCatalogPath);
   const projectRoot = findProjectRoot(scannedRoot);
   const javaVersion = detectJavaVersion(projectRoot);
   const files = walkJavaFiles(scannedRoot);
@@ -429,7 +613,7 @@ export function scanDirectory(
     scannedFileCount: files.length,
     sources,
     libraries: buildLibrarySummary(sources),
-    duplicates: findDuplicates(sources, catalog),
+    duplicates: findDuplicates(sources, catalog, javaVersion),
     generatedAt: new Date().toISOString(),
   };
 }
@@ -467,8 +651,28 @@ export function formatReportMarkdown(report: ScanReport): string {
     for (const dup of report.duplicates) {
       lines.push(`### ${dup.purpose} (\`${dup.groupId}\`)`);
       lines.push(`- Types: ${dup.types.map((t) => `\`${t}\``).join(", ")}`);
+      if (dup.methods.length > 0) {
+        lines.push(`- Matched methods: ${dup.methods.map((m) => `\`${m}\``).join(", ")}`);
+      }
+      if (dup.preferredType) {
+        const library = dup.preferredLibrary ? ` (${dup.preferredLibrary})` : "";
+        lines.push(`- Recommended type: \`${dup.preferredType}\`${library}`);
+      }
+      if (dup.recommendation) {
+        lines.push(`- Recommendation: ${dup.recommendation}`);
+      }
       lines.push(`- Sources: ${dup.sources.map((s) => `\`${s}\``).join(", ")}`);
       lines.push("");
+      if (dup.replacements.length > 0) {
+        lines.push(`| Source | Line | Current | Recommended |`);
+        lines.push(`|---|---:|---|---|`);
+        for (const replacement of dup.replacements) {
+          lines.push(
+            `| \`${replacement.source}\` | ${replacement.line} | \`${replacement.current}\` | \`${replacement.recommended}\` |`
+          );
+        }
+        lines.push("");
+      }
     }
   }
 

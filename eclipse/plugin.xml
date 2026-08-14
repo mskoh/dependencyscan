@@ -18,6 +18,7 @@
   </extension>
 
   <extension point="org.eclipse.ui.menus">
+    <!-- Package Explorer only (avoid duplicate with Project Explorer) -->
     <menuContribution locationURI="popup:org.eclipse.jdt.ui.PackageExplorer?after=additions">
       <command
         commandId="dependencyscan.eclipse.scan"
@@ -25,15 +26,27 @@
         icon="icons/scan.png"
         style="push">
         <visibleWhen checkEnabled="false">
-          <with variable="selection">
-            <count value="1"/>
-            <iterate>
-              <adapt type="org.eclipse.core.resources.IContainer"/>
-            </iterate>
-          </with>
+          <and>
+            <with variable="activePartId">
+              <equals value="org.eclipse.jdt.ui.PackageExplorer"/>
+            </with>
+            <with variable="selection">
+              <count value="1"/>
+              <iterate>
+                <or>
+                  <adapt type="org.eclipse.core.resources.IContainer"/>
+                  <instanceof value="org.eclipse.jdt.core.IJavaProject"/>
+                  <instanceof value="org.eclipse.jdt.core.IPackageFragmentRoot"/>
+                  <instanceof value="org.eclipse.jdt.core.IPackageFragment"/>
+                </or>
+              </iterate>
+            </with>
+          </and>
         </visibleWhen>
       </command>
     </menuContribution>
+
+    <!-- Project Explorer only -->
     <menuContribution locationURI="popup:org.eclipse.ui.navigator.ProjectExplorer#PopupMenu?after=additions">
       <command
         commandId="dependencyscan.eclipse.scan"
@@ -41,12 +54,22 @@
         icon="icons/scan.png"
         style="push">
         <visibleWhen checkEnabled="false">
-          <with variable="selection">
-            <count value="1"/>
-            <iterate>
-              <adapt type="org.eclipse.core.resources.IContainer"/>
-            </iterate>
-          </with>
+          <and>
+            <with variable="activePartId">
+              <equals value="org.eclipse.ui.navigator.ProjectExplorer"/>
+            </with>
+            <with variable="selection">
+              <count value="1"/>
+              <iterate>
+                <or>
+                  <adapt type="org.eclipse.core.resources.IContainer"/>
+                  <instanceof value="org.eclipse.jdt.core.IJavaProject"/>
+                  <instanceof value="org.eclipse.jdt.core.IPackageFragmentRoot"/>
+                  <instanceof value="org.eclipse.jdt.core.IPackageFragment"/>
+                </or>
+              </iterate>
+            </with>
+          </and>
         </visibleWhen>
       </command>
     </menuContribution>
@@ -62,5 +85,12 @@
       category="dependencyscan.eclipse.category"
       class="dependencyscan.eclipse.views.ReportView"
       icon="icons/scan.png"/>
+  </extension>
+
+  <extension point="org.eclipse.ui.preferencePages">
+    <page
+      id="dependencyscan.eclipse.preferences"
+      name="Dependency Scan"
+      class="dependencyscan.eclipse.preferences.DependencyScanPreferencePage"/>
   </extension>
 </plugin>

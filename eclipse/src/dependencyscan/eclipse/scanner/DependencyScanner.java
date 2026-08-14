@@ -24,6 +24,7 @@ import java.util.stream.Stream;
 
 import dependencyscan.eclipse.model.ScanReport;
 import dependencyscan.eclipse.model.ScanReport.DuplicateFinding;
+import dependencyscan.eclipse.model.ScanReport.DuplicateReplacement;
 import dependencyscan.eclipse.model.ScanReport.LibrarySummary;
 import dependencyscan.eclipse.model.ScanReport.MethodUsage;
 import dependencyscan.eclipse.model.ScanReport.RecommendationHit;
@@ -53,8 +54,15 @@ public class DependencyScanner {
   }
 
   public ScanReport scan(Path scannedRoot) throws IOException {
+    return scan(scannedRoot, null);
+  }
+
+  public ScanReport scan(Path scannedRoot, Integer fallbackJavaVersion) throws IOException {
     Path projectRoot = findProjectRoot(scannedRoot);
     Integer javaVersion = detectJavaVersion(projectRoot);
+    if (javaVersion == null) {
+      javaVersion = fallbackJavaVersion;
+    }
 
     List<Path> javaFiles;
     try (Stream<Path> walk = Files.walk(scannedRoot)) {
@@ -83,7 +91,7 @@ public class DependencyScanner {
     }
 
     report.libraries.addAll(buildLibrarySummary(report.sources));
-    report.duplicates.addAll(findDuplicates(report.sources));
+    report.duplicates.addAll(findDuplicates(report.sources, javaVersion));
     return report;
   }
 
@@ -235,29 +243,102 @@ public class DependencyScanner {
     return list;
   }
 
-  private List<DuplicateFinding> findDuplicates(List<SourceFinding> sources) {
+  private List<DuplicateFinding> findDuplicates(List<SourceFinding> sources, Integer javaVersion) {
     List<DuplicateFinding> findings = new ArrayList<>();
     for (RecommendationCatalog.DuplicateGroup group : catalog.getDuplicateGroups()) {
       Set<String> usedTypes = new LinkedHashSet<>();
+      Set<String> usedMethods = new LinkedHashSet<>();
       Set<String> usedSources = new LinkedHashSet<>();
       for (SourceFinding source : sources) {
         for (MethodUsage usage : source.usages) {
-          if (group.members.contains(usage.typeName)) {
+          if (matchesDuplicateGroup(group, usage)) {
             usedTypes.add(usage.typeName);
+            usedMethods.add(usage.typeName + "#" + usage.method);
             usedSources.add(source.source);
           }
         }
       }
-      if (usedTypes.size() >= 2) {
+      int duplicateCount = group.methodMembers.isEmpty() ? usedTypes.size() : usedMethods.size();
+      if (duplicateCount >= 2) {
         DuplicateFinding dup = new DuplicateFinding();
         dup.groupId = group.id;
         dup.purpose = group.purpose;
+        dup.preferredType = group.preferredType;
+        dup.preferredLibrary = group.preferredLibrary;
+        dup.recommendation = group.recommendation;
         dup.types.addAll(usedTypes);
+        dup.methods.addAll(usedMethods);
         dup.sources.addAll(usedSources);
+        dup.replacements.addAll(buildDuplicateReplacements(group, sources, javaVersion));
         findings.add(dup);
       }
     }
     return findings;
+  }
+
+  private List<DuplicateReplacement> buildDuplicateReplacements(
+      RecommendationCatalog.DuplicateGroup group,
+      List<SourceFinding> sources,
+      Integer javaVersion) {
+    List<DuplicateReplacement> replacements = new ArrayList<>();
+    for (SourceFinding source : sources) {
+      for (MethodUsage usage : source.usages) {
+        if (!group.members.contains(usage.typeName)) {
+          continue;
+        }
+        if (!matchesDuplicateGroup(group, usage)) {
+          continue;
+        }
+        if (usage.typeName.equals(group.preferredType)) {
+          continue;
+        }
+        String recommended = resolveDuplicateReplacement(group, usage, javaVersion);
+        if (recommended == null || recommended.isBlank()) {
+          continue;
+        }
+        DuplicateReplacement replacement = new DuplicateReplacement();
+        replacement.source = source.source;
+        replacement.line = usage.line;
+        replacement.current = usage.typeName + "#" + usage.method;
+        replacement.recommended = recommended;
+        replacements.add(replacement);
+      }
+    }
+    return replacements;
+  }
+
+  private String resolveDuplicateReplacement(
+      RecommendationCatalog.DuplicateGroup group,
+      MethodUsage usage,
+      Integer javaVersion) {
+    String key = usage.typeName + "#" + usage.method;
+    int version = javaVersion != null ? javaVersion : 8;
+    for (RecommendationCatalog.MethodReplacementRule rule : group.methodReplacementRules) {
+      if (!key.equals(rule.current)) {
+        continue;
+      }
+      if (version < rule.minJava) {
+        continue;
+      }
+      if (rule.maxJava != null && version > rule.maxJava) {
+        continue;
+      }
+      return rule.recommended;
+    }
+    String replacement = group.methodReplacements.get(key);
+    if (replacement != null) {
+      return replacement;
+    }
+    return null;
+  }
+
+  private boolean matchesDuplicateGroup(
+      RecommendationCatalog.DuplicateGroup group,
+      MethodUsage usage) {
+    if (!group.methodMembers.isEmpty()) {
+      return group.methodMembers.contains(usage.typeName + "#" + usage.method);
+    }
+    return group.members.contains(usage.typeName);
   }
 
   public static Path findProjectRoot(Path startDir) {
@@ -351,9 +432,34 @@ public class DependencyScanner {
         sb.append("- Types: ")
             .append(dup.types.stream().map(t -> "`" + t + "`").collect(Collectors.joining(", ")))
             .append("\n");
+        if (!dup.methods.isEmpty()) {
+          sb.append("- Matched methods: ")
+              .append(dup.methods.stream().map(s -> "`" + s + "`").collect(Collectors.joining(", ")))
+              .append("\n");
+        }
+        if (dup.preferredType != null && !dup.preferredType.isBlank()) {
+          sb.append("- Recommended type: `").append(dup.preferredType).append("`");
+          if (dup.preferredLibrary != null && !dup.preferredLibrary.isBlank()) {
+            sb.append(" (").append(dup.preferredLibrary).append(")");
+          }
+          sb.append("\n");
+        }
+        if (dup.recommendation != null && !dup.recommendation.isBlank()) {
+          sb.append("- Recommendation: ").append(dup.recommendation).append("\n");
+        }
         sb.append("- Sources: ")
             .append(dup.sources.stream().map(s -> "`" + s + "`").collect(Collectors.joining(", ")))
             .append("\n\n");
+        if (!dup.replacements.isEmpty()) {
+          sb.append("| Source | Line | Current | Recommended |\n|---|---:|---|---|\n");
+          for (DuplicateReplacement replacement : dup.replacements) {
+            sb.append("| `").append(replacement.source).append("` | ")
+                .append(replacement.line)
+                .append(" | `").append(replacement.current).append("` | `")
+                .append(replacement.recommended).append("` |\n");
+          }
+          sb.append("\n");
+        }
       }
     }
 
@@ -392,5 +498,19 @@ public class DependencyScanner {
       String json = reader.lines().collect(Collectors.joining("\n"));
       return RecommendationCatalog.fromJson(json);
     }
+  }
+
+  public static void mergeCustomCatalog(RecommendationCatalog catalog, String customCatalogPath)
+      throws IOException {
+    String value = customCatalogPath == null ? "" : customCatalogPath.trim();
+    if (value.isEmpty()) {
+      return;
+    }
+    Path customPath = Path.of(value).toAbsolutePath().normalize();
+    if (!Files.exists(customPath)) {
+      throw new IOException("Custom catalog not found: " + customPath);
+    }
+    RecommendationCatalog custom = RecommendationCatalog.fromJson(Files.readString(customPath));
+    catalog.mergeFrom(custom);
   }
 }

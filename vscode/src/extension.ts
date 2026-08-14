@@ -1,7 +1,13 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import { formatReportMarkdown, scanDirectory, ScanReport } from "./scanner";
+import {
+  findProjectRoot,
+  formatReportMarkdown,
+  scanDirectory,
+  writeReportFile,
+  ScanReport,
+} from "./scanner";
 
 export function activate(context: vscode.ExtensionContext): void {
   const disposable = vscode.commands.registerCommand(
@@ -10,7 +16,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const target = await resolveTargetDirectory(uri);
       if (!target) {
         vscode.window.showWarningMessage(
-          "Dependency Scan: 스캔할 폴더를 선택하세요. (예: src/main/java)"
+          "Dependency Scan: 스캔할 폴더를 선택하세요. (예: 프로젝트, src, src/main, src/main/java)"
         );
         return;
       }
@@ -30,8 +36,22 @@ export function activate(context: vscode.ExtensionContext): void {
           cancellable: false,
         },
         async () => {
-          const report = scanDirectory(target.fsPath, catalogPath);
-          await showReport(report);
+          const customCatalogPath = vscode.workspace
+            .getConfiguration("dependencyscan")
+            .get<string>("catalogPath", "");
+          const report = scanDirectory(target.fsPath, catalogPath, customCatalogPath);
+          const projectRoot = findProjectRoot(target.fsPath);
+          const markdown = formatReportMarkdown(report);
+          const reportDirectory = vscode.workspace
+            .getConfiguration("dependencyscan")
+            .get<string>("reportDirectory", "reports");
+          const reportPath = writeReportFile(
+            projectRoot,
+            target.fsPath,
+            markdown,
+            reportDirectory
+          );
+          await showReport(report, reportPath);
         }
       );
     }
@@ -47,19 +67,31 @@ export function deactivate(): void {
 async function resolveTargetDirectory(
   uri?: vscode.Uri
 ): Promise<vscode.Uri | undefined> {
-  if (uri && uri.scheme === "file") {
-    const stat = await vscode.workspace.fs.stat(uri);
-    if (stat.type & vscode.FileType.Directory) {
-      return uri;
+  // Explorer context menu passes the clicked resource (project, src, src/main/java, …)
+  if (uri && (uri.scheme === "file" || uri.scheme === "vscode-remote")) {
+    try {
+      const stat = await vscode.workspace.fs.stat(uri);
+      if (stat.type & vscode.FileType.Directory) {
+        return uri;
+      }
+      // File selected → scan its parent folder
+      return vscode.Uri.file(path.dirname(uri.fsPath));
+    } catch {
+      // fall through to active / dialog
     }
-    return vscode.Uri.file(path.dirname(uri.fsPath));
+  }
+
+  const active = vscode.window.activeTextEditor?.document.uri;
+  if (active && active.scheme === "file") {
+    return vscode.Uri.file(path.dirname(active.fsPath));
   }
 
   const picked = await vscode.window.showOpenDialog({
     canSelectFiles: false,
     canSelectFolders: true,
     canSelectMany: false,
-    openLabel: "Scan",
+    openLabel: "Dependency Scan",
+    title: "스캔할 폴더 선택 (프로젝트 / src / src/main / src/main/java)",
   });
   return picked?.[0];
 }
@@ -78,12 +110,8 @@ function resolveCatalogPath(context: vscode.ExtensionContext): string {
   return candidates[0];
 }
 
-async function showReport(report: ScanReport): Promise<void> {
-  const markdown = formatReportMarkdown(report);
-  const doc = await vscode.workspace.openTextDocument({
-    content: markdown,
-    language: "markdown",
-  });
+async function showReport(report: ScanReport, reportPath: string): Promise<void> {
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(reportPath));
   await vscode.window.showTextDocument(doc, { preview: false });
 
   const panel = vscode.window.createWebviewPanel(
@@ -92,12 +120,12 @@ async function showReport(report: ScanReport): Promise<void> {
     vscode.ViewColumn.Beside,
     { enableScripts: false }
   );
-  panel.webview.html = renderHtml(report);
+  panel.webview.html = renderHtml(report, reportPath);
 
   const dupCount = report.duplicates.length;
   const usageCount = report.sources.reduce((n, s) => n + s.usages.length, 0);
   vscode.window.showInformationMessage(
-    `Dependency Scan 완료: 파일 ${report.scannedFileCount}개, 사용 ${usageCount}건, 중복 그룹 ${dupCount}개`
+    `Dependency Scan 완료: ${path.basename(reportPath)} 저장 · 파일 ${report.scannedFileCount}개 · 사용 ${usageCount}건 · 중복 ${dupCount}개`
   );
 }
 
@@ -114,7 +142,7 @@ function simpleName(typeName: string): string {
   return parts[parts.length - 1];
 }
 
-function renderHtml(report: ScanReport): string {
+function renderHtml(report: ScanReport, reportPath: string): string {
   const libraryRows = report.libraries
     .map(
       (lib) =>
@@ -129,12 +157,45 @@ function renderHtml(report: ScanReport): string {
       ? "<p class='muted'>중복 사용 없음</p>"
       : report.duplicates
           .map(
-            (d) => `
+            (d) => {
+              const replacementRows = d.replacements
+                .map(
+                  (r) => `<tr>
+                    <td><code>${escapeHtml(r.source)}</code></td>
+                    <td>${r.line}</td>
+                    <td><code>${escapeHtml(r.current)}</code></td>
+                    <td><code>${escapeHtml(r.recommended)}</code></td>
+                  </tr>`
+                )
+                .join("");
+              const preferred = d.preferredType
+                ? `<p><strong>Recommended type:</strong> <code>${escapeHtml(d.preferredType)}</code>${
+                    d.preferredLibrary ? ` (${escapeHtml(d.preferredLibrary)})` : ""
+                  }</p>`
+                : "";
+              const methods = d.methods.length
+                ? `<p><strong>Matched methods:</strong> ${d.methods.map((m) => `<code>${escapeHtml(m)}</code>`).join(", ")}</p>`
+                : "";
+              const recommendation = d.recommendation
+                ? `<p><strong>Recommendation:</strong> ${escapeHtml(d.recommendation)}</p>`
+                : "";
+              const replacements = replacementRows
+                ? `<table>
+                    <thead><tr><th>Source</th><th>Line</th><th>Current</th><th>Recommended</th></tr></thead>
+                    <tbody>${replacementRows}</tbody>
+                  </table>`
+                : "";
+              return `
       <div class="card">
         <h3>${escapeHtml(d.purpose)}</h3>
         <p><strong>Types:</strong> ${d.types.map((t) => `<code>${escapeHtml(t)}</code>`).join(", ")}</p>
+        ${methods}
+        ${preferred}
+        ${recommendation}
         <p><strong>Sources:</strong> ${d.sources.map((s) => `<code>${escapeHtml(s)}</code>`).join(", ")}</p>
-      </div>`
+        ${replacements}
+      </div>`;
+            }
           )
           .join("");
 
@@ -233,6 +294,7 @@ function renderHtml(report: ScanReport): string {
 <body>
   <h1>Dependency Scan Report</h1>
   <div class="meta">
+    <div>Saved: <code>${escapeHtml(reportPath)}</code></div>
     <div>Root: <code>${escapeHtml(report.scannedRoot)}</code></div>
     <div>Java: <strong>${report.javaVersion ?? "unknown"}</strong> · Files: <strong>${report.scannedFileCount}</strong> · ${escapeHtml(report.generatedAt)}</div>
   </div>

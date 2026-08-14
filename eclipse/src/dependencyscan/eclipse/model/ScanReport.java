@@ -38,8 +38,20 @@ public class ScanReport {
   public static class DuplicateFinding {
     public String groupId;
     public String purpose;
+    public String preferredType;
+    public String preferredLibrary;
+    public String recommendation;
     public final List<String> types = new ArrayList<>();
+    public final List<String> methods = new ArrayList<>();
     public final List<String> sources = new ArrayList<>();
+    public final List<DuplicateReplacement> replacements = new ArrayList<>();
+  }
+
+  public static class DuplicateReplacement {
+    public String source;
+    public int line;
+    public String current;
+    public String recommended;
   }
 
   public static class LibrarySummary {

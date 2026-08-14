@@ -19,14 +19,25 @@ public class ReportView extends ViewPart {
   public void createPartControl(Composite parent) {
     parent.setLayout(new FillLayout());
     text = new StyledText(parent, SWT.READ_ONLY | SWT.V_SCROLL | SWT.H_SCROLL | SWT.BORDER);
-    text.setText("폴더를 우클릭한 뒤 Dependency Scan을 실행하세요.\n예: src/main/java");
+    text.setText(
+        "프로젝트 또는 폴더(예: src, src/main, src/main/java)를 우클릭한 뒤 Dependency Scan을 실행하세요.\n"
+            + "리포트는 프로젝트 reports/ 디렉터리에 저장됩니다.");
   }
 
   public void setReport(ScanReport report) {
+    setReport(report, null);
+  }
+
+  public void setReport(ScanReport report, String reportPath) {
     if (text == null || text.isDisposed()) {
       return;
     }
-    text.setText(DependencyScanner.formatMarkdown(report));
+    StringBuilder sb = new StringBuilder();
+    if (reportPath != null && !reportPath.isBlank()) {
+      sb.append("Saved: ").append(reportPath).append("\n\n");
+    }
+    sb.append(DependencyScanner.formatMarkdown(report));
+    text.setText(sb.toString());
   }
 
   @Override

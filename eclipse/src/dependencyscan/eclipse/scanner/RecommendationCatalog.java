@@ -26,7 +26,20 @@ public class RecommendationCatalog {
   public static class DuplicateGroup {
     public String id;
     public String purpose;
+    public String preferredType;
+    public String preferredLibrary;
+    public String recommendation;
     public final List<String> members = new ArrayList<>();
+    public final List<String> methodMembers = new ArrayList<>();
+    public final Map<String, String> methodReplacements = new LinkedHashMap<>();
+    public final List<MethodReplacementRule> methodReplacementRules = new ArrayList<>();
+  }
+
+  public static class MethodReplacementRule {
+    public String current;
+    public int minJava;
+    public Integer maxJava;
+    public String recommended;
   }
 
   private final Map<String, String> libraryAliases = new LinkedHashMap<>();
@@ -39,6 +52,28 @@ public class RecommendationCatalog {
 
   public List<Rule> getRecommendations() {
     return Collections.unmodifiableList(recommendations);
+  }
+
+  public void mergeFrom(RecommendationCatalog custom) {
+    if (custom == null) {
+      return;
+    }
+    libraryAliases.putAll(custom.libraryAliases);
+    for (DuplicateGroup customGroup : custom.duplicateGroups) {
+      int existingIndex = -1;
+      for (int i = 0; i < duplicateGroups.size(); i++) {
+        if (duplicateGroups.get(i).id != null && duplicateGroups.get(i).id.equals(customGroup.id)) {
+          existingIndex = i;
+          break;
+        }
+      }
+      if (existingIndex >= 0) {
+        duplicateGroups.set(existingIndex, customGroup);
+      } else {
+        duplicateGroups.add(customGroup);
+      }
+    }
+    recommendations.addAll(custom.recommendations);
   }
 
   public boolean hasRecommendation(String typeName) {
@@ -100,10 +135,34 @@ public class RecommendationCatalog {
       DuplicateGroup g = new DuplicateGroup();
       g.id = readString(obj, "id");
       g.purpose = readString(obj, "purpose");
+      g.preferredType = readString(obj, "preferredType");
+      g.preferredLibrary = readString(obj, "preferredLibrary");
+      g.recommendation = readString(obj, "recommendation");
       g.members.addAll(readStringArray(obj, "members"));
+      g.methodMembers.addAll(readStringArray(obj, "methodMembers"));
+      g.methodReplacements.putAll(parseStringMap(extractObject(obj, "methodReplacements")));
+      g.methodReplacementRules.addAll(parseMethodReplacementRules(extractArray(obj, "methodReplacementRules")));
       groups.add(g);
     }
     return groups;
+  }
+
+  private static List<MethodReplacementRule> parseMethodReplacementRules(String arrayBody) {
+    List<MethodReplacementRule> rules = new ArrayList<>();
+    if (arrayBody == null) {
+      return rules;
+    }
+    for (String obj : splitTopLevelObjects(arrayBody)) {
+      MethodReplacementRule rule = new MethodReplacementRule();
+      rule.current = readString(obj, "current");
+      rule.minJava = readInt(obj, "minJava", 8);
+      rule.maxJava = readNullableInt(obj, "maxJava");
+      rule.recommended = readString(obj, "recommended");
+      if (rule.current != null && rule.recommended != null) {
+        rules.add(rule);
+      }
+    }
+    return rules;
   }
 
   private static List<Rule> parseRules(String arrayBody) {
